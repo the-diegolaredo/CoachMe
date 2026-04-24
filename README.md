@@ -61,7 +61,7 @@ python3 coachme.py --source 0
 python3 coachme.py --use-picamera2
 ```
 
-Press `q` in the preview window to stop, or type `end` in the terminal and press Enter.
+Press `q` in the preview window to stop.
 
 ## Useful options
 
@@ -80,9 +80,8 @@ python3 coachme.py \
 - `--cooldown`: minimum seconds between valid crossings
 - `--headless`: run without preview window (good for SSH)
 - `--mute`: disable spoken announcements
-- `--summary-txt`: text summary file rewritten at the end of each new workout (default: `results/latest_workout.txt`)
 
-## Output files
+## Output format (`CSV`)
 
 `results/splits.csv` columns:
 
@@ -90,8 +89,6 @@ python3 coachme.py \
 - `timestamp_utc_epoch`
 - `elapsed_seconds`
 - `split_seconds`
-
-`results/latest_workout.txt` is rewritten every run and includes total elapsed time and all splits in a plain text table.
 
 ## Reliability tips for track testing
 
