@@ -67,10 +67,9 @@ class CoachMeApp(ctk.CTk):
 
     def _show_pre_workout_summary(self):
         workout_text = self.profile.workout_description if self.profile.workout_description else "No prior workout plan provided."
-        events_text = ", ".join(self.profile.event_specialization)
         summary = (
             f"Hi {self.profile.name}!\n\n"
-            f"Goal event(s): {events_text}\n"
+            f"Goal event: {self.profile.event_specialization}\n"
             f"Profile: {self.profile.age} years old, {self.profile.biological_sex}, "
             f"{self.profile.height_cm} cm, {self.profile.weight_lbs} lbs\n"
             f"Current PRs: {self.profile.personal_records or 'No PRs entered'}\n"
@@ -80,8 +79,7 @@ class CoachMeApp(ctk.CTk):
         self.show_page(self.pre_workout_page)
 
     def on_start_workout(self):
-        primary_event = self.profile.event_specialization[0]
-        self.workout_result = self._build_mock_workout_result(primary_event)
+        self.workout_result = self._build_mock_workout_result(self.profile.event_specialization)
         self.workout_page.set_splits(self.workout_result.splits)
         self.show_page(self.workout_page)
 
@@ -91,9 +89,8 @@ class CoachMeApp(ctk.CTk):
 
     def _show_final_summary(self):
         self.workout_result.ai_summary = generate_rule_based_summary(self.profile, self.workout_result)
-        primary_event = self.profile.event_specialization[0]
-        self.workout_result.future_workout_suggestion = future_workout_suggestion(primary_event)
-        self.workout_result.next_day_suggestion = next_day_suggestion(primary_event)
+        self.workout_result.future_workout_suggestion = future_workout_suggestion(self.profile.event_specialization)
+        self.workout_result.next_day_suggestion = next_day_suggestion(self.profile.event_specialization)
 
         self.final_summary_page.set_content(
             summary=self.workout_result.ai_summary,
@@ -109,7 +106,8 @@ class CoachMeApp(ctk.CTk):
 
     def on_return_to_beginning(self):
         self.final_summary_page.download_button.configure(text="DOWNLOAD SUMMARY")
-        self.input_page.reset_fields()
+        self.input_page.workout_text.configure(state="normal")
+        self.input_page.workout_text.delete("1.0", "end")
         self.show_page(self.input_page)
 
     @staticmethod

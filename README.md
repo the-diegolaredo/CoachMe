@@ -1,62 +1,45 @@
-# CoachMe GUI Prototype (CustomTkinter)
+# CoachMe MVP (Raspberry Pi Track Split Timer)
 
-This project now provides a **multi-page desktop GUI flow** for the Raspberry Pi track coach prototype using **mock/demo data** (no live camera timing yet).
+Minimal, reliable prototype for a 1-month build timeline. This project:
 
-## Current scope
+1. captures video from a USB webcam (`/dev/video0`) or Raspberry Pi camera,
+2. detects a runner crossing a virtual line,
+3. announces split times with text-to-speech,
+4. saves split results to CSV,
+5. stays lightweight (OpenCV + standard library).
 
-Implemented pages:
+## Hardware used
 
-1. Athlete Input Page
-2. Loading Page (`Processing athlete profile...`)
-3. Pre-Workout Summary Page
-4. Workout Page with mock split table + pace status indicators
-5. Final Loading Page (`Analyzing workout...`)
-6. Final Summary Page with split review, suggestions, and export
+- Raspberry Pi 4
+- Camera (Logitech USB webcam or Pi camera module)
+- Speaker HAT / powered speakers
 
-## Project structure
+## How it works (simple + robust)
 
-- `main.py`
-- `ui/app.py`
-- `ui/pages/input_page.py`
-- `ui/pages/loading_page.py`
-- `ui/pages/pre_workout_page.py`
-- `ui/pages/workout_page.py`
-- `ui/pages/final_summary_page.py`
-- `models/runner_profile.py`
-- `models/workout_result.py`
-- `services/summary_generator.py`
-- `services/export_service.py`
+- Uses OpenCV background subtraction to detect moving foreground blobs.
+- Tracks the largest moving object's center point.
+- Counts a split when center crosses a configurable vertical line (`line-x`) in your chosen direction.
+- Uses a cooldown window to reduce duplicate triggers.
+- Writes each split to `results/splits.csv` and announces over speakers.
 
-## Features implemented
+> This is intentionally basic and dependable for MVP use, not full athlete ID or multi-runner tracking.
 
-- Athlete profile capture:
-  - event specialization checkboxes (`100m`, `200m`, `400m`, `800m`, `1600m`, `3200m`) with up to 2 selections
-  - weight, biological sex, age, height
-  - PR inputs
-  - workout description textbox
-  - `No prior workout plan` checkbox disables workout textbox
-- RETURN TO BEGINNING resets all first-page fields to defaults
-- Loading transitions between stages
-- Pre-workout summary with friendly greeting
-- Workout page mock split table with status indicators:
-  - `▲` red = slower than target pace
-  - `▼` yellow = too much faster than target pace
-  - `✓` green = on pace
-- Final summary page:
-  - rule-based AI-style summary placeholder
-  - collapsible split review
-  - future workout suggestion
-  - following-day recovery/training suggestion
-- Download summary to `.txt` with athlete profile + workout description + split table
+## Install
 
-## Setup (Raspberry Pi / Linux)
+### 1) System packages (Raspberry Pi OS)
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-pip python3-tk
+sudo apt install -y python3-pip python3-opencv espeak-ng
 ```
 
-Create a virtual environment and install Python packages:
+If using Pi Camera with `picamera2` backend:
+
+```bash
+sudo apt install -y python3-picamera2
+```
+
+### 2) Python environment
 
 ```bash
 python3 -m venv .venv
@@ -66,17 +49,57 @@ pip install -r requirements.txt
 
 ## Run
 
+### USB webcam (default)
+
 ```bash
-python3 main.py
+python3 coachme.py --source 0
 ```
 
-## Export output
+### Pi camera (`picamera2`)
 
-When you click **DOWNLOAD SUMMARY**, the app writes a text file to:
+```bash
+python3 coachme.py --use-picamera2
+```
 
-- `results/coachme_summary_<timestamp>.txt`
+Press `q` in the preview window to stop.
 
-## Notes
+## Useful options
 
-- This phase is intentionally UI-first with mock workout data.
-- Camera-based split timing integration can be connected later using the existing workflow.
+```bash
+python3 coachme.py \
+  --line-x 360 \
+  --direction left_to_right \
+  --min-area 2500 \
+  --cooldown 1.5 \
+  --output results/workout_1.csv
+```
+
+- `--line-x`: X pixel position for the virtual timing line (default = image center)
+- `--direction`: `left_to_right` or `right_to_left`
+- `--min-area`: ignores tiny moving objects/noise
+- `--cooldown`: minimum seconds between valid crossings
+- `--headless`: run without preview window (good for SSH)
+- `--mute`: disable spoken announcements
+
+## Output format (`CSV`)
+
+`results/splits.csv` columns:
+
+- `crossing_number`
+- `timestamp_utc_epoch`
+- `elapsed_seconds`
+- `split_seconds`
+
+## Reliability tips for track testing
+
+- Mount camera stable on tripod.
+- Keep virtual line where runner body fully crosses frame.
+- Avoid strong backlight and excessive camera shake.
+- Tune `--min-area` until only runners trigger crossings.
+- Use `--cooldown` to prevent multiple counts per pass.
+
+## Next-step enhancements (after MVP)
+
+- Save event clips around each crossing.
+- Add lap-distance context (100m/200m/etc.) and pace estimates.
+- Add optional cloud/AI post-workout analysis.

@@ -13,15 +13,13 @@ def export_summary_txt(profile: RunnerProfile, result: WorkoutResult, output_dir
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = output_dir / f"coachme_summary_{timestamp}.txt"
 
-    events_text = ", ".join(profile.event_specialization)
-
     with path.open("w", encoding="utf-8") as f:
         f.write("CoachMe Workout Summary\n")
         f.write(f"Generated: {datetime.now().isoformat(timespec='seconds')}\n\n")
 
         f.write("Athlete Profile\n")
         f.write(f"Name: {profile.name}\n")
-        f.write(f"Event: {events_text}\n")
+        f.write(f"Event: {profile.event_specialization}\n")
         f.write(f"Weight (lbs): {profile.weight_lbs}\n")
         f.write(f"Biological sex: {profile.biological_sex}\n")
         f.write(f"Age: {profile.age}\n")
