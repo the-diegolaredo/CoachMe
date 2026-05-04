@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import customtkinter as ctk
 
-from coachme import SplitEvent
 from models.runner_profile import RunnerProfile
 from models.workout_result import SplitEntry, WorkoutResult
 from services.export_service import export_summary_txt
-from services.split_tracking_service import SplitTrackingService, TrackingConfig
 from services.summary_generator import (
     future_workout_suggestion,
     generate_rule_based_summary,
@@ -27,7 +25,6 @@ class CoachMeApp(ctk.CTk):
 
         self.profile = RunnerProfile()
         self.workout_result = WorkoutResult(target_split_seconds=20.0)
-        self.split_tracker = SplitTrackingService()
 
         self.container = ctk.CTkFrame(self)
         self.container.pack(fill="both", expand=True, padx=8, pady=8)
@@ -70,10 +67,9 @@ class CoachMeApp(ctk.CTk):
 
     def _show_pre_workout_summary(self):
         workout_text = self.profile.workout_description if self.profile.workout_description else "No prior workout plan provided."
-        events_text = ", ".join(self.profile.event_specialization)
         summary = (
             f"Hi {self.profile.name}!\n\n"
-            f"Goal event(s): {events_text}\n"
+            f"Goal event: {self.profile.event_specialization}\n"
             f"Profile: {self.profile.age} years old, {self.profile.biological_sex}, "
             f"{self.profile.height_cm} cm, {self.profile.weight_lbs} lbs\n"
             f"Current PRs: {self.profile.personal_records or 'No PRs entered'}\n"
@@ -83,33 +79,18 @@ class CoachMeApp(ctk.CTk):
         self.show_page(self.pre_workout_page)
 
     def on_start_workout(self):
-        primary_event = self.profile.event_specialization[0]
-        self.workout_result = WorkoutResult(target_split_seconds=self._target_for_event(primary_event), splits=[])
-        self.workout_page.clear_splits()
+        self.workout_result = self._build_mock_workout_result(self.profile.event_specialization)
+        self.workout_page.set_splits(self.workout_result.splits)
         self.show_page(self.workout_page)
 
-        config = TrackingConfig(headless=True, mute=True)
-        self.split_tracker.start(config=config, on_split_detected=self._on_split_detected)
-
-    def _on_split_detected(self, split_event: SplitEvent):
-        elapsed = self._format_seconds(split_event.elapsed_seconds)
-        split_time = self._format_seconds(split_event.split_seconds)
-        status = self._status_from_target(split_event.split_seconds, self.workout_result.target_split_seconds)
-        split_entry = SplitEntry(split_event.crossing_number, elapsed, split_time, status)
-        self.workout_result.splits.append(split_entry)
-
-        self.after(0, lambda: self.workout_page.add_split_row(split_entry.split_number, split_entry.elapsed_time, split_entry.split_time, split_entry.status))
-
     def on_end_workout(self):
-        self.split_tracker.stop()
         self.show_page(self.final_loading_page)
-        self.after(1200, self._show_final_summary)
+        self.after(1500, self._show_final_summary)
 
     def _show_final_summary(self):
         self.workout_result.ai_summary = generate_rule_based_summary(self.profile, self.workout_result)
-        primary_event = self.profile.event_specialization[0]
-        self.workout_result.future_workout_suggestion = future_workout_suggestion(primary_event)
-        self.workout_result.next_day_suggestion = next_day_suggestion(primary_event)
+        self.workout_result.future_workout_suggestion = future_workout_suggestion(self.profile.event_specialization)
+        self.workout_result.next_day_suggestion = next_day_suggestion(self.profile.event_specialization)
 
         self.final_summary_page.set_content(
             summary=self.workout_result.ai_summary,
@@ -125,7 +106,8 @@ class CoachMeApp(ctk.CTk):
 
     def on_return_to_beginning(self):
         self.final_summary_page.download_button.configure(text="DOWNLOAD SUMMARY")
-        self.input_page.reset_fields()
+        self.input_page.workout_text.configure(state="normal")
+        self.input_page.workout_text.delete("1.0", "end")
         self.show_page(self.input_page)
 
     @staticmethod
@@ -143,23 +125,29 @@ class CoachMeApp(ctk.CTk):
             return None
 
     @staticmethod
-    def _target_for_event(event: str) -> float:
+    def _build_mock_workout_result(event: str) -> WorkoutResult:
         if event in {"100m", "200m"}:
-            return 5.0
-        if event in {"400m", "800m"}:
-            return 20.0
-        return 45.0
-
-    @staticmethod
-    def _status_from_target(split_seconds: float, target: float) -> str:
-        if split_seconds > target * 1.06:
-            return "slow"
-        if split_seconds < target * 0.94:
-            return "fast"
-        return "on_pace"
-
-    @staticmethod
-    def _format_seconds(total_seconds: float) -> str:
-        minutes = int(total_seconds // 60)
-        seconds = total_seconds - (minutes * 60)
-        return f"{minutes:02d}:{seconds:04.1f}"
+            target = 5.0
+            mock = [
+                SplitEntry(1, "00:05.1", "00:05.1", "on_pace"),
+                SplitEntry(2, "00:10.6", "00:05.5", "slow"),
+                SplitEntry(3, "00:15.2", "00:04.6", "fast"),
+                SplitEntry(4, "00:20.3", "00:05.1", "on_pace"),
+            ]
+        elif event in {"400m", "800m"}:
+            target = 20.0
+            mock = [
+                SplitEntry(1, "00:20.2", "00:20.2", "on_pace"),
+                SplitEntry(2, "00:41.0", "00:20.8", "slow"),
+                SplitEntry(3, "01:00.0", "00:19.0", "fast"),
+                SplitEntry(4, "01:20.2", "00:20.2", "on_pace"),
+            ]
+        else:
+            target = 45.0
+            mock = [
+                SplitEntry(1, "00:45.2", "00:45.2", "on_pace"),
+                SplitEntry(2, "01:33.1", "00:47.9", "slow"),
+                SplitEntry(3, "02:17.0", "00:43.9", "fast"),
+                SplitEntry(4, "03:01.8", "00:44.8", "on_pace"),
+            ]
+        return WorkoutResult(target_split_seconds=target, splits=mock)
