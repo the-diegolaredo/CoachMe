@@ -8,7 +8,7 @@ class RunnerProfile:
     """Stores athlete inputs collected from the first page."""
 
     name: str = "Athlete"
-    event_specialization: list[str] = field(default_factory=lambda: ["100m"])
+    event_specialization: str = "100m"
     weight_lbs: float | None = None
     biological_sex: str = ""
     age: int | None = None

@@ -7,11 +7,10 @@ import argparse
 import csv
 import subprocess
 import sys
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 import cv2
 
@@ -20,13 +19,6 @@ import cv2
 class DetectionState:
     previous_center_x: Optional[int] = None
     last_crossing_ts: float = 0.0
-
-
-@dataclass
-class SplitEvent:
-    crossing_number: int
-    elapsed_seconds: float
-    split_seconds: float
 
 
 class SplitAnnouncer:
@@ -107,12 +99,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-area", type=int, default=2500, help="Minimum contour area to treat as runner")
     parser.add_argument("--cooldown", type=float, default=1.5, help="Seconds between registered crossings")
     parser.add_argument("--output", type=Path, default=Path("results/splits.csv"), help="CSV output path")
-    parser.add_argument(
-        "--summary-txt",
-        type=Path,
-        default=Path("results/latest_workout.txt"),
-        help="Text summary path, rewritten each workout",
-    )
     parser.add_argument("--headless", action="store_true", help="Disable preview window")
     parser.add_argument("--mute", action="store_true", help="Disable spoken split announcements")
     parser.add_argument("--use-picamera2", action="store_true", help="Use Raspberry Pi picamera2 backend")
@@ -133,102 +119,53 @@ def append_split(path: Path, crossing_number: int, elapsed: float, split: float)
         writer.writerow([crossing_number, time.time(), f"{elapsed:.2f}", f"{split:.2f}"])
 
 
-def write_workout_summary(path: Path, total_elapsed: float, splits: list[SplitEvent]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        f.write("CoachMe Workout Summary\n")
-        f.write(f"saved_epoch: {time.time():.0f}\n")
-        f.write(f"total_elapsed_seconds: {total_elapsed:.2f}\n")
-        f.write(f"total_crossings: {len(splits)}\n\n")
-        f.write("crossing\telapsed_seconds\tsplit_seconds\n")
-        for split in splits:
-            f.write(f"{split.crossing_number}\t{split.elapsed_seconds:.2f}\t{split.split_seconds:.2f}\n")
-
-
-def watch_terminal_stop(stop_event: threading.Event) -> None:
-    """Listen for terminal commands to stop workout in headless mode."""
-    while not stop_event.is_set():
-        try:
-            user_input = input().strip().lower()
-        except EOFError:
-            return
-        if user_input in {"end", "stop", "quit", "q"}:
-            stop_event.set()
-            return
-
-
 def should_count_crossing(prev_x: int, current_x: int, line_x: int, direction: str) -> bool:
     if direction == "left_to_right":
         return prev_x < line_x <= current_x
     return prev_x > line_x >= current_x
 
 
-def run_split_tracking(
-    source: int = 0,
-    width: int = 640,
-    height: int = 480,
-    line_x: int = -1,
-    direction: str = "left_to_right",
-    min_area: int = 2500,
-    cooldown: float = 1.5,
-    output: Path = Path("results/splits.csv"),
-    summary_txt: Path = Path("results/latest_workout.txt"),
-    headless: bool = False,
-    mute: bool = False,
-    use_picamera2: bool = False,
-    stop_event: threading.Event | None = None,
-    on_split_detected: Callable[[SplitEvent], None] | None = None,
-    allow_terminal_stop: bool = True,
-) -> list[SplitEvent]:
-    """Run split tracking and return all collected splits."""
-    announcer = SplitAnnouncer(enabled=not mute)
+def main() -> int:
+    args = parse_args()
+    announcer = SplitAnnouncer(enabled=not args.mute)
 
     try:
-        video_source = VideoSource(
-            source=source,
-            width=width,
-            height=height,
-            use_picamera2=use_picamera2,
+        source = VideoSource(
+            source=args.source,
+            width=args.width,
+            height=args.height,
+            use_picamera2=args.use_picamera2,
         )
     except RuntimeError as exc:
         print(f"[error] {exc}", file=sys.stderr)
-        return []
+        return 1
 
     background = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=50, detectShadows=False)
 
     state = DetectionState()
-    stop_signal = stop_event or threading.Event()
     run_started_at = time.time()
     last_split_elapsed = 0.0
     crossings = 0
-    split_events: list[SplitEvent] = []
 
-    ensure_output_csv(output)
-    write_workout_summary(summary_txt, 0.0, [])
+    ensure_output_csv(args.output)
     announcer.say("CoachMe ready")
 
-    if allow_terminal_stop:
-        print("[info] Type 'end' + Enter in terminal to stop and save workout summary.")
-    if allow_terminal_stop and sys.stdin and sys.stdin.isatty():
-        terminal_thread = threading.Thread(target=watch_terminal_stop, args=(stop_signal,), daemon=True)
-        terminal_thread.start()
-
     try:
-        while not stop_signal.is_set():
-            ok, frame = video_source.read()
+        while True:
+            ok, frame = source.read()
             if not ok or frame is None:
                 print("[warn] Frame capture failed; exiting.")
                 break
 
             frame_h, frame_w = frame.shape[:2]
-            active_line_x = line_x if line_x >= 0 else frame_w // 2
+            line_x = args.line_x if args.line_x >= 0 else frame_w // 2
 
             fg_mask = background.apply(frame)
             fg_mask = cv2.GaussianBlur(fg_mask, (9, 9), 0)
             _, fg_mask = cv2.threshold(fg_mask, 180, 255, cv2.THRESH_BINARY)
 
             contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            candidates = [c for c in contours if cv2.contourArea(c) >= min_area]
+            candidates = [c for c in contours if cv2.contourArea(c) >= args.min_area]
 
             if candidates:
                 largest = max(candidates, key=cv2.contourArea)
@@ -236,8 +173,8 @@ def run_split_tracking(
                 center_x = x + w // 2
 
                 if state.previous_center_x is not None:
-                    crossed = should_count_crossing(state.previous_center_x, center_x, active_line_x, direction)
-                    cooldown_done = (time.time() - state.last_crossing_ts) >= cooldown
+                    crossed = should_count_crossing(state.previous_center_x, center_x, line_x, args.direction)
+                    cooldown_done = (time.time() - state.last_crossing_ts) >= args.cooldown
                     if crossed and cooldown_done:
                         now = time.time()
                         elapsed = now - run_started_at
@@ -246,22 +183,18 @@ def run_split_tracking(
                         last_split_elapsed = elapsed
                         state.last_crossing_ts = now
 
-                        append_split(output, crossings, elapsed, split)
-                        split_event = SplitEvent(crossings, elapsed, split)
-                        split_events.append(split_event)
-                        if on_split_detected is not None:
-                            on_split_detected(split_event)
+                        append_split(args.output, crossings, elapsed, split)
                         announcer.say(f"Split {crossings}: {split:.1f} seconds")
                         print(f"[event] crossing={crossings} split={split:.2f}s elapsed={elapsed:.2f}s")
 
                 state.previous_center_x = center_x
 
-                if not headless:
+                if not args.headless:
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
                     cv2.circle(frame, (center_x, y + h // 2), 5, (255, 0, 0), -1)
 
-            if not headless:
-                cv2.line(frame, (active_line_x, 0), (active_line_x, frame_h), (0, 0, 255), 2)
+            if not args.headless:
+                cv2.line(frame, (line_x, 0), (line_x, frame_h), (0, 0, 255), 2)
                 cv2.putText(
                     frame,
                     f"Crossings: {crossings}",
@@ -274,7 +207,6 @@ def run_split_tracking(
                 cv2.imshow("CoachMe", frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord("q"):
-                    stop_signal.set()
                     break
             else:
                 time.sleep(0.01)
@@ -282,32 +214,10 @@ def run_split_tracking(
     except KeyboardInterrupt:
         print("\n[info] Interrupted by user.")
     finally:
-        total_elapsed = time.time() - run_started_at
-        write_workout_summary(summary_txt, total_elapsed, split_events)
-        video_source.release()
+        source.release()
         cv2.destroyAllWindows()
 
-    print(f"[info] Session ended. Splits saved to {output}")
-    print(f"[info] Workout summary saved to {summary_txt}")
-    return split_events
-
-
-def main() -> int:
-    args = parse_args()
-    run_split_tracking(
-        source=args.source,
-        width=args.width,
-        height=args.height,
-        line_x=args.line_x,
-        direction=args.direction,
-        min_area=args.min_area,
-        cooldown=args.cooldown,
-        output=args.output,
-        summary_txt=args.summary_txt,
-        headless=args.headless,
-        mute=args.mute,
-        use_picamera2=args.use_picamera2,
-    )
+    print(f"[info] Session ended. Splits saved to {args.output}")
     return 0
 
 

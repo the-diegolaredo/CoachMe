@@ -40,19 +40,19 @@ class WorkoutPage(ctk.CTkFrame):
         for text in headers:
             ctk.CTkLabel(row, text=text, font=ctk.CTkFont(weight="bold"), width=200).pack(side="left", padx=4)
 
-    def clear_splits(self):
+    def set_splits(self, splits):
         for child in self.table_frame.winfo_children()[1:]:
             child.destroy()
 
-    def add_split_row(self, split_number: int, elapsed_time: str, split_time: str, status: str):
-        icon, color, label = STATUS_DISPLAY.get(status, ("?", "gray", "Unknown"))
-        row = ctk.CTkFrame(self.table_frame)
-        row.pack(fill="x", padx=8, pady=3)
-        ctk.CTkLabel(row, text=str(split_number), width=200).pack(side="left", padx=4)
-        ctk.CTkLabel(row, text=elapsed_time, width=200).pack(side="left", padx=4)
-        ctk.CTkLabel(row, text=split_time, width=200).pack(side="left", padx=4)
+        for split in splits:
+            icon, color, label = STATUS_DISPLAY.get(split.status, ("?", "gray", "Unknown"))
+            row = ctk.CTkFrame(self.table_frame)
+            row.pack(fill="x", padx=8, pady=3)
+            ctk.CTkLabel(row, text=str(split.split_number), width=200).pack(side="left", padx=4)
+            ctk.CTkLabel(row, text=split.elapsed_time, width=200).pack(side="left", padx=4)
+            ctk.CTkLabel(row, text=split.split_time, width=200).pack(side="left", padx=4)
 
-        status_frame = ctk.CTkFrame(row, fg_color="transparent")
-        status_frame.pack(side="left", padx=4)
-        ctk.CTkLabel(status_frame, text=icon, text_color=color, font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
-        ctk.CTkLabel(status_frame, text=label).pack(side="left", padx=6)
+            status_frame = ctk.CTkFrame(row, fg_color="transparent")
+            status_frame.pack(side="left", padx=4)
+            ctk.CTkLabel(status_frame, text=icon, text_color=color, font=ctk.CTkFont(size=18, weight="bold")).pack(side="left")
+            ctk.CTkLabel(status_frame, text=label).pack(side="left", padx=6)

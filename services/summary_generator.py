@@ -13,10 +13,9 @@ def generate_rule_based_summary(profile: RunnerProfile, result: WorkoutResult) -
     slower = sum(1 for s in result.splits if s.status == "slow")
     faster = sum(1 for s in result.splits if s.status == "fast")
     on_pace = sum(1 for s in result.splits if s.status == "on_pace")
-    events_text = ", ".join(profile.event_specialization)
 
     return (
-        f"Great effort in your {events_text} focus session. "
+        f"Great effort in your {profile.event_specialization} focus session. "
         f"You logged {split_count} splits: {on_pace} on pace, {slower} slower than target, "
         f"and {faster} faster than target. "
         "Primary coaching note: keep your middle splits controlled, then finish strong with relaxed form."
